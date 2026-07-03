@@ -13,12 +13,20 @@ public class EncodeQueueHostedService(
     IVideoEncoder encoder,
     ILogger<EncodeQueueHostedService> logger) : BackgroundService
 {
+    // Encoded under this suffix so an in-progress file is never mistaken for a
+    // finished one; it also falls outside MediaFile's allowed extensions, so it
+    // won't show up via the media API while encoding is still in flight.
+    private const string InProgressSuffix = ".encoding";
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await foreach (var job in queue.ReadAllAsync(stoppingToken))
         {
             job.Status = EncodeJobStatus.Running;
             job.StartedAt = DateTimeOffset.UtcNow;
+
+            var destinationFullPath = Path.Combine(mediaResolver.RootPath, job.DestinationPath);
+            var inProgressFullPath = destinationFullPath + InProgressSuffix;
 
             try
             {
@@ -27,10 +35,11 @@ public class EncodeQueueHostedService(
                     throw new FileNotFoundException("Source file no longer exists.", job.SourcePath);
                 }
 
-                var destinationFullPath = Path.Combine(mediaResolver.RootPath, job.DestinationPath);
                 Directory.CreateDirectory(Path.GetDirectoryName(destinationFullPath)!);
 
-                await encoder.EncodeAsync(sourceFullPath, destinationFullPath, stoppingToken);
+                await encoder.EncodeAsync(sourceFullPath, inProgressFullPath, stoppingToken);
+
+                File.Move(inProgressFullPath, destinationFullPath, overwrite: true);
 
                 job.Status = EncodeJobStatus.Completed;
             }
@@ -46,8 +55,24 @@ public class EncodeQueueHostedService(
             }
             finally
             {
+                TryDeleteInProgressFile(inProgressFullPath);
                 job.CompletedAt = DateTimeOffset.UtcNow;
             }
+        }
+    }
+
+    private void TryDeleteInProgressFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to clean up leftover in-progress file {Path}", path);
         }
     }
 }

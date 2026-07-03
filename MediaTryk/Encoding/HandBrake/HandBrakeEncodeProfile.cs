@@ -1,0 +1,23 @@
+namespace MediaTryk.Encoding.HandBrake;
+
+/// <summary>
+/// Fixed encode settings applied to every job: 10-bit x265 at 720p, stereo AAC
+/// audio, mp4 output optimized for web streaming, with the selected subtitle
+/// burned into the video.
+/// </summary>
+public static class HandBrakeEncodeProfile
+{
+    public const string VideoEncoder = "x265_10bit";
+    public const string EncoderPreset = "fast";
+    public const double VideoQuality = 20;
+
+    public const int MaxWidth = 1280;
+    public const int MaxHeight = 720;
+
+    public const string AudioEncoder = "av_aac";
+    public const string AudioMixdown = "stereo";
+    public const int AudioBitrateKbps = 192;
+
+    public const string ContainerFormat = "av_mp4";
+    public const string OutputExtension = ".mp4";
+}

@@ -1,4 +1,6 @@
 using MediaTryk.Encoding;
+using MediaTryk.Encoding.HandBrake;
+using MediaTryk.Encoding.Mkv;
 using MediaTryk.Media;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -18,7 +20,8 @@ builder.Services.AddOptions<SourceLibraryOptions>()
 builder.Services.AddSingleton<SourcePathResolver>();
 
 builder.Services.AddSingleton<EncodeQueue>();
-builder.Services.AddSingleton<IVideoEncoder, CopyThroughVideoEncoder>();
+builder.Services.AddSingleton<MkvMergeIdentifier>();
+builder.Services.AddSingleton<IVideoEncoder, HandBrakeVideoEncoder>();
 builder.Services.AddHostedService<EncodeQueueHostedService>();
 
 builder.Services.AddCors(options =>

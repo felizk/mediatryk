@@ -5,6 +5,7 @@ public record EncodeQueueRequestDto(string Path);
 public record EncodeJobDto(
     Guid Id,
     string SourcePath,
+    string DestinationPath,
     string Status,
     DateTimeOffset QueuedAt,
     DateTimeOffset? StartedAt,
@@ -16,6 +17,7 @@ public static class EncodeJobExtensions
     public static EncodeJobDto ToDto(this EncodeJob job) => new(
         job.Id,
         job.SourcePath,
+        job.DestinationPath,
         job.Status.ToString(),
         job.QueuedAt,
         job.StartedAt,

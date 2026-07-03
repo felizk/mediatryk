@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using MediaTryk.Encoding.HandBrake;
 
 namespace MediaTryk.Encoding;
 
@@ -18,6 +19,7 @@ public class EncodeQueue
         {
             Id = Guid.NewGuid(),
             SourcePath = sourcePath,
+            DestinationPath = Path.ChangeExtension(sourcePath, HandBrakeEncodeProfile.OutputExtension),
             QueuedAt = DateTimeOffset.UtcNow
         };
 

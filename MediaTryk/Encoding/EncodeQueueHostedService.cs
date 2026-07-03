@@ -27,7 +27,7 @@ public class EncodeQueueHostedService(
                     throw new FileNotFoundException("Source file no longer exists.", job.SourcePath);
                 }
 
-                var destinationFullPath = Path.Combine(mediaResolver.RootPath, job.SourcePath);
+                var destinationFullPath = Path.Combine(mediaResolver.RootPath, job.DestinationPath);
                 Directory.CreateDirectory(Path.GetDirectoryName(destinationFullPath)!);
 
                 await encoder.EncodeAsync(sourceFullPath, destinationFullPath, stoppingToken);

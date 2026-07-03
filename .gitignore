@@ -1,0 +1,13 @@
+## .NET
+bin/
+obj/
+*.user
+
+## Rider / JetBrains
+.idea/
+
+## VS Code
+.vscode/
+
+## OS
+.DS_Store

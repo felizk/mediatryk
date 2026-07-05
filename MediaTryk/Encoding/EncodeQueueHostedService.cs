@@ -26,8 +26,21 @@ public class EncodeQueueHostedService(
     {
         await foreach (var job in queue.ReadAllAsync(stoppingToken))
         {
-            job.Status = EncodeJobStatus.Running;
-            job.StartedAt = DateTimeOffset.UtcNow;
+            // The job object is the lock guarding its Queued -> Running/Canceled
+            // transition, shared with EncodeQueue.Cancel.
+            lock (job)
+            {
+                if (job.Status == EncodeJobStatus.Canceled)
+                {
+                    continue;
+                }
+
+                job.Status = EncodeJobStatus.Running;
+                job.StartedAt = DateTimeOffset.UtcNow;
+            }
+
+            using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            job.Cancellation = jobCancellation;
             queue.NotifyChanged(job);
 
             var destinationFullPath = Path.Combine(resolver.MediaRootPath, job.DestinationPath);
@@ -35,6 +48,8 @@ public class EncodeQueueHostedService(
 
             try
             {
+                jobCancellation.Token.ThrowIfCancellationRequested();
+
                 if (!resolver.TryResolveSource(job.SourcePath, out var sourceFullPath) || !File.Exists(sourceFullPath))
                 {
                     throw new FileNotFoundException("Source file no longer exists.", job.SourcePath);
@@ -53,7 +68,7 @@ public class EncodeQueueHostedService(
                         lastNotify.Restart();
                         queue.NotifyChanged(job);
                     }
-                }, stoppingToken);
+                }, jobCancellation.Token);
 
                 File.Move(inProgressFullPath, destinationFullPath, overwrite: true);
 
@@ -61,9 +76,10 @@ public class EncodeQueueHostedService(
                 job.Progress = 1;
                 job.EtaSeconds = null;
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
             {
                 job.Status = EncodeJobStatus.Canceled;
+                job.EtaSeconds = null;
             }
             catch (Exception ex)
             {
@@ -73,6 +89,7 @@ public class EncodeQueueHostedService(
             }
             finally
             {
+                job.Cancellation = null;
                 TryDeleteInProgressFile(inProgressFullPath);
                 job.CompletedAt = DateTimeOffset.UtcNow;
                 queue.NotifyChanged(job);

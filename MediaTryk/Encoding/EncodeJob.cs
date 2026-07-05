@@ -21,4 +21,10 @@ public class EncodeJob
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Set by the worker while the job is running so a cancel request
+    /// can abort the in-flight encode. Never serialized.
+    /// </summary>
+    public CancellationTokenSource? Cancellation { get; set; }
 }

@@ -109,6 +109,20 @@ app.MapGet("/api/encode/queue/{id:guid}", (Guid id, EncodeQueue queue) =>
         queue.TryGet(id, out var job) ? Results.Ok(job!.ToDto()) : Results.NotFound())
     .WithName("GetEncodeJob");
 
+app.MapDelete("/api/encode/queue/{id:guid}", (Guid id, EncodeQueue queue) =>
+        queue.Cancel(id, out var job) switch
+        {
+            EncodeCancelResult.Canceled => Results.Ok(job!.ToDto()),
+            EncodeCancelResult.CancellationRequested => Results.Accepted(value: job!.ToDto()),
+            EncodeCancelResult.AlreadyFinished => Results.Ok(job!.ToDto()),
+            _ => Results.NotFound()
+        })
+    .WithName("CancelEncodeJob");
+
+app.MapDelete("/api/encode/queue/finished", (EncodeQueue queue) =>
+        Results.Ok(new { Removed = queue.ClearFinished() }))
+    .WithName("ClearFinishedEncodeJobs");
+
 app.Map("/api/encode/queue/ws", async (HttpContext context, EncodeQueue queue) =>
     {
         if (!context.WebSockets.IsWebSocketRequest)

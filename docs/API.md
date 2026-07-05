@@ -15,6 +15,8 @@ Contract reference for building a client against the MediaTryk server. Copy this
 
 Lists one directory of the **source** tree. `path` is a root-relative directory path (omit it for the root). Returns `404` for paths that don't exist or escape the root.
 
+Optional query parameter `encodedOnly` (bool, default `false`): with `?encodedOnly=true`, `files` only includes entries with `encodeStatus: "Encoded"`, and `directories` only includes folders whose relative path also exists as a directory in the media tree — i.e. folders that (probably) contain encoded content. Note the directory filter is existence-based: a media folder left behind by deleted encodes still shows up, and a directory can appear even if all its encoded content is in subfolders.
+
 ```json
 {
   "path": "Shows/DangersInMyHeart",
@@ -100,5 +102,6 @@ Client rules:
 ## Typical flows
 
 - **Library UI**: `GET /api/media/browse/{dir}` per directory; show `encodeStatus` per file; offer "play" (stream URL with `.mp4` extension) when `Encoded`, "encode" when `NotEncoded`.
+- **"Already encoded" view**: same browse calls with `?encodedOnly=true` — everything returned is streamable (or a folder on the way to something encoded).
 - **Encode with live progress**: open the WebSocket first, then `POST /api/encode/queue`; correlate by the `id` from the 201 response and drive a progress bar from `progress`/`etaSeconds`.
 - **After a job completes**: re-browse the affected directory (or flip that file locally to `Encoded`) so play buttons appear.

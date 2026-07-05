@@ -38,7 +38,7 @@ var app = builder.Build();
 app.UseCors();
 app.UseWebSockets();
 
-app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolver, EncodeQueue queue) =>
+app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolver, EncodeQueue queue, bool encodedOnly = false) =>
     {
         if (!resolver.TryResolveSource(path, out var fullPath) || !Directory.Exists(fullPath))
         {
@@ -49,6 +49,7 @@ app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolve
             .GetDirectories()
             .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
             .Select(d => new MediaDirectoryDto(d.Name, Path.GetRelativePath(resolver.SourceRootPath, d.FullName)))
+            .Where(d => !encodedOnly || Directory.Exists(Path.Combine(resolver.MediaRootPath, d.Path)))
             .ToList();
 
         var files = new DirectoryInfo(fullPath)
@@ -68,6 +69,7 @@ app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolve
 
                 return new MediaFileDto(f.Name, relativePath, f.Length, f.Extension, status);
             })
+            .Where(f => !encodedOnly || f.EncodeStatus == MediaFileEncodeStatus.Encoded)
             .ToList();
 
         return Results.Ok(new MediaBrowseResultDto(path ?? string.Empty, directories, files));

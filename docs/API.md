@@ -52,7 +52,7 @@ Body: `{ "path": "<source-relative file path>" }`. Queues an encode; returns `20
 
 ### `GET /api/encode/queue` / `GET /api/encode/queue/{id}`
 
-The full job list (ordered by `queuedAt`) or a single job (`404` if unknown). Job DTO:
+The full job list (ordered by `order`, see below) or a single job (`404` if unknown). Job DTO:
 
 ```json
 {
@@ -60,6 +60,7 @@ The full job list (ordered by `queuedAt`) or a single job (`404` if unknown). Jo
   "sourcePath": "Shows/X/ep1.mkv",
   "destinationPath": "Shows/X/ep1.mp4",
   "status": "Running",
+  "order": 3,
   "progress": 0.42,
   "etaSeconds": 118,
   "queuedAt": "2026-07-05T07:22:36.36+00:00",
@@ -70,6 +71,7 @@ The full job list (ordered by `queuedAt`) or a single job (`404` if unknown). Jo
 ```
 
 - `status`: `"Queued" | "Running" | "Completed" | "Failed" | "Canceled"`.
+- `order`: integer processing-order key — queued jobs run lowest-first. **Sort by `order`, not `queuedAt`**: a requeued job (see below) keeps its original `queuedAt` but gets a new `order` that puts it at the front. Values are opaque: they can be negative, can change on requeue and across server restarts (renumbered on load), and are only meaningful relative to other jobs in the same list/snapshot. Ties are possible — a requeued job shares its `order` with the job that was running when it was requeued; break ties by `startedAt` with `null` last (i.e. the requeued job sorts *after* the one it's waiting on). The list endpoint already returns this ordering.
 - `progress`: fraction 0–1, `null` until the first progress report; pinned to `1` on completion.
 - `etaSeconds`: HandBrake's estimate; `null` or `0` for the first few seconds of an encode while the rate estimate stabilizes — render as "calculating…" rather than "0s".
 - `errorMessage` is set only for `Failed`.
@@ -82,6 +84,16 @@ Cancel semantics, idempotent:
 - Running job → kills the encode, returns `202` + DTO (status still `Running` in the response; the `Canceled` transition arrives via WebSocket/polling moments later).
 - Already finished job → `200` + DTO, unchanged.
 - Unknown id → `404`.
+
+### `POST /api/encode/queue/{id}/requeue`
+
+Re-enqueues a `Failed` or `Canceled` job **under the same `id`** and moves it to the front of the queue: it runs right after the currently running encode (or immediately if nothing is running). The job's `status` flips back to `"Queued"`, `progress`/`startedAt`/`completedAt`/`errorMessage` reset to `null`, `queuedAt` keeps its original value, and `order` changes to the new front-of-queue position. Because the `id` is reused, WebSocket subscribers see it as a normal in-place update — no new entry appears.
+
+- `Failed`/`Canceled` job → `200` + updated DTO.
+- Job in any other state (`Queued`, `Running`, `Completed`) → `409` + unchanged DTO.
+- Unknown id → `404`.
+
+Requeueing several jobs puts each new one at the very front, so the most recently requeued runs first.
 
 ### `DELETE /api/encode/queue/finished`
 
@@ -98,6 +110,7 @@ Live job updates. Protocol:
 Client rules:
 
 - **Treat every message as the job's current state, keyed by `id`** — upsert into a map. Messages can repeat the same state and can skip intermediate states (e.g. two `Running` frames and no `Queued` frame if transitions outraced the send loop).
+- **Display the map sorted by `order`.** A requeue arrives as an update to an existing id whose `order` (and `status`) changed — re-sort on every message rather than assuming positions are fixed.
 - **There is no removal message.** After calling clear-finished (or if another client does), your map holds stale entries. On reconnect, *replace* your state with the new snapshot rather than merging, and refetch `GET /api/encode/queue` after you call clear-finished yourself.
 - A non-WebSocket request to this route returns `400`.
 
@@ -107,3 +120,4 @@ Client rules:
 - **"Already encoded" view**: same browse calls with `?encodedOnly=true` — everything returned is streamable (or a folder on the way to something encoded).
 - **Encode with live progress**: open the WebSocket first, then `POST /api/encode/queue`; correlate by the `id` from the 201 response and drive a progress bar from `progress`/`etaSeconds`.
 - **After a job completes**: re-browse the affected directory (or flip that file locally to `Encoded`) so play buttons appear.
+- **Retry a failed encode**: `POST /api/encode/queue/{id}/requeue` on the `Failed` job — same id, jumps to the front of the queue. Offer it for `Canceled` jobs too.

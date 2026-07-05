@@ -17,6 +17,15 @@ public class EncodeJob
     public required string SourcePath { get; init; }
     public required string DestinationPath { get; init; }
     public EncodeJobStatus Status { get; set; } = EncodeJobStatus.Queued;
+
+    /// <summary>
+    /// Position in the processing order: the worker always picks the queued job
+    /// with the lowest value. Normally assigned from a monotonic counter at
+    /// enqueue time; Requeue moves a job to the front by assigning it a value
+    /// below every queued job's. Unlike QueuedAt, this is an ordering key, not
+    /// a fact about when something happened.
+    /// </summary>
+    public long Order { get; set; }
     public double? Progress { get; set; }
     public double? EtaSeconds { get; set; }
     public required DateTimeOffset QueuedAt { get; init; }

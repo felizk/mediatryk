@@ -129,6 +129,15 @@ app.MapDelete("/api/encode/queue/{id:guid}", (Guid id, EncodeQueue queue) =>
         })
     .WithName("CancelEncodeJob");
 
+app.MapPost("/api/encode/queue/{id:guid}/requeue", (Guid id, EncodeQueue queue) =>
+        queue.Requeue(id, out var job) switch
+        {
+            EncodeRequeueResult.Requeued => Results.Ok(job!.ToDto()),
+            EncodeRequeueResult.NotRequeueable => Results.Conflict(job!.ToDto()),
+            _ => Results.NotFound()
+        })
+    .WithName("RequeueEncodeJob");
+
 app.MapDelete("/api/encode/queue/finished", (EncodeQueue queue) =>
         Results.Ok(new { Removed = queue.ClearFinished() }))
     .WithName("ClearFinishedEncodeJobs");

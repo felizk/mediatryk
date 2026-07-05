@@ -30,7 +30,9 @@ public static class HandBrakeArgumentBuilder
             "--encoder-preset", useHardwareEncoder
                 ? HandBrakeEncodeProfile.HardwareEncoderPreset
                 : HandBrakeEncodeProfile.EncoderPreset,
-            "-q", HandBrakeEncodeProfile.VideoQuality.ToString(CultureInfo.InvariantCulture),
+            "-q", (useHardwareEncoder
+                ? HandBrakeEncodeProfile.HardwareVideoQuality
+                : HandBrakeEncodeProfile.VideoQuality).ToString(CultureInfo.InvariantCulture),
             "-X", HandBrakeEncodeProfile.MaxWidth.ToString(CultureInfo.InvariantCulture),
             "-Y", HandBrakeEncodeProfile.MaxHeight.ToString(CultureInfo.InvariantCulture),
 

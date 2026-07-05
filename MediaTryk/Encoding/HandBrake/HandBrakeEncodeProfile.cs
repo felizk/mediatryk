@@ -11,9 +11,12 @@ public static class HandBrakeEncodeProfile
     public const string EncoderPreset = "fast";
 
     // Intel QSV (VAAPI-backed) equivalents, used when HandBrakeCapabilities
-    // reports the hardware as usable. QSV presets are speed/balanced/quality.
+    // reports the hardware as usable. QSV presets are speed/balanced/quality;
+    // the ICQ value runs a bit higher than x265's CRF since hardware HEVC is
+    // less efficient per bit at the same number.
     public const string HardwareVideoEncoder = "qsv_h265_10bit";
-    public const string HardwareEncoderPreset = "balanced";
+    public const string HardwareEncoderPreset = "quality";
+    public const double HardwareVideoQuality = 22;
 
     public const double VideoQuality = 20;
 

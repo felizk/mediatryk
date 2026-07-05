@@ -27,6 +27,10 @@ WORKDIR /app
 COPY --from=build /app/publish .
 RUN chown -R 99:100 /app
 
+# HandBrakeCLI/mkvmerge decode argv per the locale charset; the Debian base
+# defaults to C/POSIX, which truncates non-ASCII filenames (e.g. "… ♥ …") and
+# makes the tools fail. C.UTF-8 is a built-in glibc locale (no locale-gen needed).
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 

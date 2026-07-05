@@ -19,6 +19,7 @@ public class MkvMergeIdentifier
         };
         startInfo.ArgumentList.Add("-J");
         startInfo.ArgumentList.Add(filePath);
+        ProcessLocale.UseUtf8(startInfo);
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start mkvmerge.");
@@ -30,14 +31,23 @@ public class MkvMergeIdentifier
         var stdout = await stdoutTask;
         var stderr = await stderrTask;
 
+        // mkvmerge reports failures as a JSON `errors` array on stdout, not on
+        // stderr, so parse the payload before deciding the exit code is fatal.
+        var result = TryDeserialize(stdout);
+
         // mkvmerge exit codes: 0 = ok, 1 = ok with warnings, 2 = error.
         if (process.ExitCode >= 2)
         {
-            throw new InvalidOperationException($"mkvmerge exited with code {process.ExitCode}: {stderr}");
+            var detail = result is { Errors.Count: > 0 }
+                ? string.Join("; ", result.Errors.Select(e => e.Trim()))
+                : string.IsNullOrWhiteSpace(stderr) ? "no error detail reported" : stderr.Trim();
+            throw new InvalidOperationException($"mkvmerge exited with code {process.ExitCode}: {detail}");
         }
 
-        var result = JsonSerializer.Deserialize<MkvMergeIdentifyResult>(stdout)
-            ?? throw new InvalidOperationException("mkvmerge produced no output.");
+        if (result is null)
+        {
+            throw new InvalidOperationException("mkvmerge produced no parsable output.");
+        }
 
         var typeCounts = new Dictionary<MkvTrackType, int>();
         var tracks = new List<MkvTrackInfo>();
@@ -64,6 +74,23 @@ public class MkvMergeIdentifier
         }
 
         return tracks;
+    }
+
+    private static MkvMergeIdentifyResult? TryDeserialize(string stdout)
+    {
+        if (string.IsNullOrWhiteSpace(stdout))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<MkvMergeIdentifyResult>(stdout);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static bool TryParseType(string type, out MkvTrackType result)

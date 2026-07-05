@@ -29,6 +29,7 @@ public partial class HandBrakeCapabilities(ILogger<HandBrakeCapabilities> logger
                 UseShellExecute = false
             };
             startInfo.ArgumentList.Add("--help");
+            ProcessLocale.UseUtf8(startInfo);
 
             using var process = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("Failed to start HandBrakeCLI.");

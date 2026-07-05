@@ -50,6 +50,8 @@ public partial class HandBrakeVideoEncoder(
             startInfo.ArgumentList.Add(arg);
         }
 
+        ProcessLocale.UseUtf8(startInfo);
+
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start HandBrakeCLI.");
 

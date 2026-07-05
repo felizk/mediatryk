@@ -6,6 +6,9 @@ internal sealed class MkvMergeIdentifyResult
 {
     [JsonPropertyName("tracks")]
     public List<MkvMergeTrack> Tracks { get; set; } = [];
+
+    [JsonPropertyName("errors")]
+    public List<string> Errors { get; set; } = [];
 }
 
 internal sealed class MkvMergeTrack

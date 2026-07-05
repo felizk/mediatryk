@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MediaTryk.Encoding;
 
 public enum EncodeJobStatus
@@ -26,5 +28,6 @@ public class EncodeJob
     /// Set by the worker while the job is running so a cancel request
     /// can abort the in-flight encode. Never serialized.
     /// </summary>
+    [JsonIgnore]
     public CancellationTokenSource? Cancellation { get; set; }
 }

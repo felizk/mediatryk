@@ -14,13 +14,35 @@ public enum EncodeCancelResult
 
 /// <summary>
 /// Holds queued encode jobs and hands them out one at a time to the background worker,
-/// while also tracking every job's status for lookup via the API.
+/// while also tracking every job's status for lookup via the API. The job list is
+/// persisted via EncodeQueueStateStore; on startup, jobs that were pending when the
+/// server stopped are re-enqueued as Queued (progress starts over).
 /// </summary>
 public class EncodeQueue
 {
     private readonly Channel<EncodeJob> _channel = Channel.CreateUnbounded<EncodeJob>();
     private readonly ConcurrentDictionary<Guid, EncodeJob> _jobs = new();
     private readonly ConcurrentDictionary<Guid, Channel<EncodeJob>> _subscribers = new();
+    private readonly EncodeQueueStateStore _store;
+
+    public EncodeQueue(EncodeQueueStateStore store)
+    {
+        _store = store;
+
+        foreach (var job in store.Load().OrderBy(j => j.QueuedAt))
+        {
+            if (job.Status is EncodeJobStatus.Queued or EncodeJobStatus.Running)
+            {
+                job.Status = EncodeJobStatus.Queued;
+                job.Progress = null;
+                job.EtaSeconds = null;
+                job.StartedAt = null;
+                _channel.Writer.TryWrite(job);
+            }
+
+            _jobs[job.Id] = job;
+        }
+    }
 
     public EncodeJob Enqueue(string sourcePath)
     {
@@ -35,6 +57,7 @@ public class EncodeQueue
         _jobs[job.Id] = job;
         _channel.Writer.TryWrite(job);
         NotifyChanged(job);
+        PersistState();
         return job;
     }
 
@@ -64,6 +87,7 @@ public class EncodeQueue
                     job.Status = EncodeJobStatus.Canceled;
                     job.CompletedAt = DateTimeOffset.UtcNow;
                     NotifyChanged(job);
+                    PersistState();
                     return EncodeCancelResult.Canceled;
 
                 case EncodeJobStatus.Running:
@@ -105,8 +129,20 @@ public class EncodeQueue
             }
         }
 
+        if (removed > 0)
+        {
+            PersistState();
+        }
+
         return removed;
     }
+
+    /// <summary>
+    /// Writes the current job list to disk. The worker calls this after status
+    /// transitions; progress updates are deliberately not persisted (progress
+    /// restarts from scratch after a restart anyway).
+    /// </summary>
+    public void PersistState() => _store.Save(GetAll());
 
     public IAsyncEnumerable<EncodeJob> ReadAllAsync(CancellationToken cancellationToken) =>
         _channel.Reader.ReadAllAsync(cancellationToken);

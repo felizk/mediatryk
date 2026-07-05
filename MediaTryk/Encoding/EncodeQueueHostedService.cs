@@ -42,6 +42,7 @@ public class EncodeQueueHostedService(
             using var jobCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             job.Cancellation = jobCancellation;
             queue.NotifyChanged(job);
+            queue.PersistState();
 
             var destinationFullPath = Path.Combine(resolver.MediaRootPath, job.DestinationPath);
             var inProgressFullPath = destinationFullPath + InProgressSuffix;
@@ -78,7 +79,20 @@ public class EncodeQueueHostedService(
             }
             catch (OperationCanceledException) when (jobCancellation.IsCancellationRequested)
             {
-                job.Status = EncodeJobStatus.Canceled;
+                if (stoppingToken.IsCancellationRequested)
+                {
+                    // Server shutdown, not a user cancel: put the job back to
+                    // Queued so it's persisted as pending and resumes on the
+                    // next start.
+                    job.Status = EncodeJobStatus.Queued;
+                    job.StartedAt = null;
+                    job.Progress = null;
+                }
+                else
+                {
+                    job.Status = EncodeJobStatus.Canceled;
+                }
+
                 job.EtaSeconds = null;
             }
             catch (Exception ex)
@@ -92,8 +106,14 @@ public class EncodeQueueHostedService(
                 job.Cancellation = null;
                 TryDeleteInProgressFile(inProgressFullPath);
                 PruneEmptyDestinationDirectories(destinationFullPath);
-                job.CompletedAt = DateTimeOffset.UtcNow;
+
+                if (job.Status != EncodeJobStatus.Queued)
+                {
+                    job.CompletedAt = DateTimeOffset.UtcNow;
+                }
+
                 queue.NotifyChanged(job);
+                queue.PersistState();
             }
         }
     }

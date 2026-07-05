@@ -71,7 +71,7 @@ The full job list (ordered by `queuedAt`) or a single job (`404` if unknown). Jo
 - `progress`: fraction 0–1, `null` until the first progress report; pinned to `1` on completion.
 - `etaSeconds`: HandBrake's estimate; `null` or `0` for the first few seconds of an encode while the rate estimate stabilizes — render as "calculating…" rather than "0s".
 - `errorMessage` is set only for `Failed`.
-- The job list is **in-memory**: it resets on server restart.
+- The job list is **persisted across server restarts** (stored under the media root). A job that was `Queued` or `Running` when the server stopped comes back as `Queued` with `progress: null` and encodes again from the start; job `id`s are stable across the restart. Finished jobs reappear as history until cleared.
 
 ### `DELETE /api/encode/queue/{id}`
 

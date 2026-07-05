@@ -20,6 +20,7 @@ builder.Services.AddOptions<HandBrakeOptions>()
     .Bind(builder.Configuration.GetSection(HandBrakeOptions.SectionName));
 builder.Services.AddSingleton<HandBrakeCapabilities>();
 
+builder.Services.AddSingleton<EncodeQueueStateStore>();
 builder.Services.AddSingleton<EncodeQueue>();
 builder.Services.AddSingleton<MkvMergeIdentifier>();
 builder.Services.AddSingleton<IVideoEncoder, HandBrakeVideoEncoder>();

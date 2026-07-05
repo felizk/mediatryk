@@ -5,8 +5,6 @@ using MediaTryk.Media;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOpenApi();
-
 builder.Services.AddOptions<MediaLibraryOptions>()
     .Bind(builder.Configuration.GetSection(MediaLibraryOptions.SectionName))
     .Validate(o => !string.IsNullOrWhiteSpace(o.RootPath), "MediaLibrary:RootPath must be set")
@@ -17,7 +15,6 @@ builder.Services.AddOptions<SourceLibraryOptions>()
     .Bind(builder.Configuration.GetSection(SourceLibraryOptions.SectionName))
     .Validate(o => !string.IsNullOrWhiteSpace(o.RootPath), "SourceLibrary:RootPath must be set")
     .ValidateOnStart();
-builder.Services.AddSingleton<SourcePathResolver>();
 
 builder.Services.AddSingleton<EncodeQueue>();
 builder.Services.AddSingleton<MkvMergeIdentifier>();
@@ -34,16 +31,11 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
-
 app.UseCors();
 
-app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolver) =>
+app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolver, EncodeQueue queue) =>
     {
-        if (!resolver.TryResolve(path, out var fullPath) || !Directory.Exists(fullPath))
+        if (!resolver.TryResolveSource(path, out var fullPath) || !Directory.Exists(fullPath))
         {
             return Results.NotFound();
         }
@@ -51,18 +43,26 @@ app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolve
         var directories = new DirectoryInfo(fullPath)
             .GetDirectories()
             .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(d => new MediaDirectoryDto(d.Name, Path.GetRelativePath(resolver.RootPath, d.FullName)))
+            .Select(d => new MediaDirectoryDto(d.Name, Path.GetRelativePath(resolver.SourceRootPath, d.FullName)))
             .ToList();
 
         var files = new DirectoryInfo(fullPath)
             .GetFiles()
             .Where(f => MediaFile.IsAllowed(f.Name))
             .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(f => new MediaFileDto(
-                f.Name,
-                Path.GetRelativePath(resolver.RootPath, f.FullName),
-                f.Length,
-                f.Extension))
+            .Select(f =>
+            {
+                var relativePath = Path.GetRelativePath(resolver.SourceRootPath, f.FullName);
+                var encodedPath = Path.Combine(
+                    resolver.MediaRootPath,
+                    Path.ChangeExtension(relativePath, HandBrakeEncodeProfile.OutputExtension));
+
+                var status = File.Exists(encodedPath) ? MediaFileEncodeStatus.Encoded
+                    : queue.IsActive(relativePath) ? MediaFileEncodeStatus.Encoding
+                    : MediaFileEncodeStatus.NotEncoded;
+
+                return new MediaFileDto(f.Name, relativePath, f.Length, f.Extension, status);
+            })
             .ToList();
 
         return Results.Ok(new MediaBrowseResultDto(path ?? string.Empty, directories, files));
@@ -72,7 +72,7 @@ app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolve
 app.MapGet("/api/media/stream/{*path}", (string? path, MediaPathResolver resolver) =>
     {
         if (string.IsNullOrEmpty(path) ||
-            !resolver.TryResolve(path, out var fullPath) ||
+            !resolver.TryResolveMedia(path, out var fullPath) ||
             !File.Exists(fullPath) ||
             !MediaFile.IsAllowed(fullPath))
         {
@@ -84,17 +84,18 @@ app.MapGet("/api/media/stream/{*path}", (string? path, MediaPathResolver resolve
     })
     .WithName("StreamMedia");
 
-app.MapPost("/api/encode/queue", (EncodeQueueRequestDto request, SourcePathResolver sourceResolver, EncodeQueue queue) =>
+app.MapPost("/api/encode/queue", (EncodeQueueRequestDto request, MediaPathResolver resolver, EncodeQueue queue) =>
     {
         if (string.IsNullOrWhiteSpace(request.Path) ||
-            !sourceResolver.TryResolve(request.Path, out var fullPath) ||
+            !resolver.TryResolveSource(request.Path, out var fullPath) ||
             !File.Exists(fullPath) ||
             !MediaFile.IsAllowed(fullPath))
         {
             return Results.NotFound();
         }
 
-        var job = queue.Enqueue(request.Path);
+        // Normalized so it matches the relative paths reported by browse.
+        var job = queue.Enqueue(Path.GetRelativePath(resolver.SourceRootPath, fullPath));
         return Results.Created($"/api/encode/queue/{job.Id}", job.ToDto());
     })
     .WithName("QueueEncode");

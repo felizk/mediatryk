@@ -33,6 +33,11 @@ public class EncodeQueue
 
     public bool TryGet(Guid id, out EncodeJob? job) => _jobs.TryGetValue(id, out job);
 
+    public bool IsActive(string sourcePath) =>
+        _jobs.Values.Any(j =>
+            j.Status is EncodeJobStatus.Queued or EncodeJobStatus.Running &&
+            string.Equals(j.SourcePath, sourcePath, StringComparison.Ordinal));
+
     public IAsyncEnumerable<EncodeJob> ReadAllAsync(CancellationToken cancellationToken) =>
         _channel.Reader.ReadAllAsync(cancellationToken);
 }

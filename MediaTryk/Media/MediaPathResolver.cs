@@ -1,25 +1,32 @@
+using MediaTryk.Encoding;
 using Microsoft.Extensions.Options;
 
 namespace MediaTryk.Media;
 
 /// <summary>
-/// Resolves user-supplied relative paths against the configured media root,
+/// Resolves user-supplied relative paths against the configured media and source roots,
 /// rejecting anything that escapes the root (e.g. via "..").
 /// </summary>
-public class MediaPathResolver(IOptions<MediaLibraryOptions> options)
+public class MediaPathResolver(IOptions<MediaLibraryOptions> mediaOptions, IOptions<SourceLibraryOptions> sourceOptions)
 {
-    private readonly string _root = Path.GetFullPath(options.Value.RootPath);
+    public string MediaRootPath { get; } = Path.GetFullPath(mediaOptions.Value.RootPath);
 
-    public string RootPath => _root;
+    public string SourceRootPath { get; } = Path.GetFullPath(sourceOptions.Value.RootPath);
 
-    public bool TryResolve(string? relativePath, out string fullPath)
+    public bool TryResolveMedia(string? relativePath, out string fullPath) =>
+        TryResolve(MediaRootPath, relativePath, out fullPath);
+
+    public bool TryResolveSource(string? relativePath, out string fullPath) =>
+        TryResolve(SourceRootPath, relativePath, out fullPath);
+
+    private static bool TryResolve(string root, string? relativePath, out string fullPath)
     {
-        var combined = Path.GetFullPath(Path.Combine(_root, relativePath ?? string.Empty));
-        var rootWithSeparator = _root.EndsWith(Path.DirectorySeparatorChar)
-            ? _root
-            : _root + Path.DirectorySeparatorChar;
+        var combined = Path.GetFullPath(Path.Combine(root, relativePath ?? string.Empty));
+        var rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar)
+            ? root
+            : root + Path.DirectorySeparatorChar;
 
-        if (combined != _root && !combined.StartsWith(rootWithSeparator, StringComparison.Ordinal))
+        if (combined != root && !combined.StartsWith(rootWithSeparator, StringComparison.Ordinal))
         {
             fullPath = string.Empty;
             return false;

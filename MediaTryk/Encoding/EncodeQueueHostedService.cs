@@ -8,8 +8,7 @@ namespace MediaTryk.Encoding;
 /// </summary>
 public class EncodeQueueHostedService(
     EncodeQueue queue,
-    SourcePathResolver sourceResolver,
-    MediaPathResolver mediaResolver,
+    MediaPathResolver resolver,
     IVideoEncoder encoder,
     ILogger<EncodeQueueHostedService> logger) : BackgroundService
 {
@@ -25,12 +24,12 @@ public class EncodeQueueHostedService(
             job.Status = EncodeJobStatus.Running;
             job.StartedAt = DateTimeOffset.UtcNow;
 
-            var destinationFullPath = Path.Combine(mediaResolver.RootPath, job.DestinationPath);
+            var destinationFullPath = Path.Combine(resolver.MediaRootPath, job.DestinationPath);
             var inProgressFullPath = destinationFullPath + InProgressSuffix;
 
             try
             {
-                if (!sourceResolver.TryResolve(job.SourcePath, out var sourceFullPath) || !File.Exists(sourceFullPath))
+                if (!resolver.TryResolveSource(job.SourcePath, out var sourceFullPath) || !File.Exists(sourceFullPath))
                 {
                     throw new FileNotFoundException("Source file no longer exists.", job.SourcePath);
                 }

@@ -23,6 +23,7 @@ public class EncodeQueueHostedService(
         {
             job.Status = EncodeJobStatus.Running;
             job.StartedAt = DateTimeOffset.UtcNow;
+            queue.NotifyChanged(job);
 
             var destinationFullPath = Path.Combine(resolver.MediaRootPath, job.DestinationPath);
             var inProgressFullPath = destinationFullPath + InProgressSuffix;
@@ -56,6 +57,7 @@ public class EncodeQueueHostedService(
             {
                 TryDeleteInProgressFile(inProgressFullPath);
                 job.CompletedAt = DateTimeOffset.UtcNow;
+                queue.NotifyChanged(job);
             }
         }
     }

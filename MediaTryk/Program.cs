@@ -32,6 +32,7 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 app.UseCors();
+app.UseWebSockets();
 
 app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolver, EncodeQueue queue) =>
     {
@@ -107,5 +108,18 @@ app.MapGet("/api/encode/queue", (EncodeQueue queue) =>
 app.MapGet("/api/encode/queue/{id:guid}", (Guid id, EncodeQueue queue) =>
         queue.TryGet(id, out var job) ? Results.Ok(job!.ToDto()) : Results.NotFound())
     .WithName("GetEncodeJob");
+
+app.Map("/api/encode/queue/ws", async (HttpContext context, EncodeQueue queue) =>
+    {
+        if (!context.WebSockets.IsWebSocketRequest)
+        {
+            return Results.BadRequest();
+        }
+
+        using var socket = await context.WebSockets.AcceptWebSocketAsync();
+        await EncodeQueueWebSocketHandler.RunAsync(socket, queue, context.RequestAborted);
+        return Results.Empty;
+    })
+    .WithName("WatchEncodeQueue");
 
 app.Run();

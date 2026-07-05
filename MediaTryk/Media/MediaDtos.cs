@@ -1,7 +1,10 @@
+using System.Text.Json.Serialization;
+
 namespace MediaTryk.Media;
 
 public record MediaDirectoryDto(string Name, string Path);
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum MediaFileEncodeStatus
 {
     NotEncoded,

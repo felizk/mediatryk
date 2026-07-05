@@ -91,6 +91,7 @@ public class EncodeQueueHostedService(
             {
                 job.Cancellation = null;
                 TryDeleteInProgressFile(inProgressFullPath);
+                PruneEmptyDestinationDirectories(destinationFullPath);
                 job.CompletedAt = DateTimeOffset.UtcNow;
                 queue.NotifyChanged(job);
             }
@@ -109,6 +110,41 @@ public class EncodeQueueHostedService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to clean up leftover in-progress file {Path}", path);
+        }
+    }
+
+    // Removes destination directories left empty after a canceled or failed
+    // encode, walking upward until a non-empty directory or the media root
+    // (which is never deleted). A completed encode's directory contains the
+    // output file, so pruning stops immediately there.
+    private void PruneEmptyDestinationDirectories(string destinationFullPath)
+    {
+        var root = Path.GetFullPath(resolver.MediaRootPath);
+        var directory = Path.GetDirectoryName(Path.GetFullPath(destinationFullPath));
+
+        while (directory is not null
+            && directory.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        {
+            if (Directory.Exists(directory))
+            {
+                try
+                {
+                    // Non-recursive: throws IOException if the directory has
+                    // any content, which is the stop condition.
+                    Directory.Delete(directory);
+                }
+                catch (IOException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to prune empty media directory {Path}", directory);
+                    break;
+                }
+            }
+
+            directory = Path.GetDirectoryName(directory);
         }
     }
 }

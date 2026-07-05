@@ -89,9 +89,8 @@ public class EncodeQueue
             string.Equals(j.SourcePath, sourcePath, StringComparison.Ordinal));
 
     /// <summary>
-    /// Removes all completed and canceled jobs from the list,
-    /// returning how many were cleared. Failed jobs are kept so their
-    /// errors stay visible.
+    /// Removes all finished jobs (completed, canceled, or failed)
+    /// from the list, returning how many were cleared.
     /// </summary>
     public int ClearFinished()
     {

@@ -2,13 +2,13 @@ using System.Text.Json.Serialization;
 
 namespace MediaTryk.Encoding.Mkv;
 
-internal class MkvMergeIdentifyResult
+internal sealed class MkvMergeIdentifyResult
 {
     [JsonPropertyName("tracks")]
     public List<MkvMergeTrack> Tracks { get; set; } = [];
 }
 
-internal class MkvMergeTrack
+internal sealed class MkvMergeTrack
 {
     [JsonPropertyName("id")]
     public int Id { get; set; }
@@ -23,7 +23,7 @@ internal class MkvMergeTrack
     public MkvMergeTrackProperties Properties { get; set; } = new();
 }
 
-internal class MkvMergeTrackProperties
+internal sealed class MkvMergeTrackProperties
 {
     [JsonPropertyName("language")]
     public string? Language { get; set; }

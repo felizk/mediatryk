@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using MediaTryk.Media;
 
 namespace MediaTryk.Encoding;
@@ -16,6 +17,10 @@ public class EncodeQueueHostedService(
     // finished one; it also falls outside MediaFile's allowed extensions, so it
     // won't show up via the media API while encoding is still in flight.
     private const string InProgressSuffix = ".encoding";
+
+    // Progress broadcasts are rate-limited so a fast encode doesn't flood
+    // WebSocket subscribers with hundreds of messages per second.
+    private static readonly TimeSpan ProgressNotifyInterval = TimeSpan.FromSeconds(1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -37,11 +42,24 @@ public class EncodeQueueHostedService(
 
                 Directory.CreateDirectory(Path.GetDirectoryName(destinationFullPath)!);
 
-                await encoder.EncodeAsync(sourceFullPath, inProgressFullPath, stoppingToken);
+                var lastNotify = Stopwatch.StartNew();
+                await encoder.EncodeAsync(sourceFullPath, inProgressFullPath, progress =>
+                {
+                    job.Progress = progress.FractionComplete;
+                    job.EtaSeconds = progress.EtaSeconds;
+
+                    if (lastNotify.Elapsed >= ProgressNotifyInterval)
+                    {
+                        lastNotify.Restart();
+                        queue.NotifyChanged(job);
+                    }
+                }, stoppingToken);
 
                 File.Move(inProgressFullPath, destinationFullPath, overwrite: true);
 
                 job.Status = EncodeJobStatus.Completed;
+                job.Progress = 1;
+                job.EtaSeconds = null;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

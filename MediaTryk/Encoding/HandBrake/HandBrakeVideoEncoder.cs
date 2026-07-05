@@ -11,7 +11,11 @@ public class HandBrakeVideoEncoder(
     MkvMergeIdentifier mkvMergeIdentifier,
     ILogger<HandBrakeVideoEncoder> logger) : IVideoEncoder
 {
-    public async Task EncodeAsync(string sourceFullPath, string destinationFullPath, CancellationToken cancellationToken)
+    public async Task EncodeAsync(
+        string sourceFullPath,
+        string destinationFullPath,
+        Action<EncodeProgress>? onProgress,
+        CancellationToken cancellationToken)
     {
         var tracks = await mkvMergeIdentifier.IdentifyTracksAsync(sourceFullPath, cancellationToken);
         var selection = TrackSelector.Select(tracks);
@@ -25,6 +29,8 @@ public class HandBrakeVideoEncoder(
             UseShellExecute = false
         };
 
+        // Switches stdout to structured JSON state blocks so progress can be parsed.
+        startInfo.ArgumentList.Add("--json");
         foreach (var arg in args)
         {
             startInfo.ArgumentList.Add(arg);
@@ -33,7 +39,7 @@ public class HandBrakeVideoEncoder(
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start HandBrakeCLI.");
 
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stdoutTask = ReadProgressAsync(process, onProgress, cancellationToken);
         var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
         try
@@ -55,6 +61,22 @@ public class HandBrakeVideoEncoder(
                 "HandBrakeCLI exited with code {ExitCode} for {SourcePath}: {Stderr}",
                 process.ExitCode, sourceFullPath, stderr);
             throw new InvalidOperationException($"HandBrakeCLI exited with code {process.ExitCode}.");
+        }
+    }
+
+    private static async Task ReadProgressAsync(
+        Process process,
+        Action<EncodeProgress>? onProgress,
+        CancellationToken cancellationToken)
+    {
+        var parser = new HandBrakeProgressParser();
+
+        while (await process.StandardOutput.ReadLineAsync(cancellationToken) is { } line)
+        {
+            if (parser.ProcessLine(line) is { } progress)
+            {
+                onProgress?.Invoke(progress);
+            }
         }
     }
 }

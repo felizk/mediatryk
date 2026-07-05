@@ -60,15 +60,18 @@ app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolve
             .Select(f =>
             {
                 var relativePath = Path.GetRelativePath(resolver.SourceRootPath, f.FullName);
-                var encodedPath = Path.Combine(
+                var encodedFile = new FileInfo(Path.Combine(
                     resolver.MediaRootPath,
-                    Path.ChangeExtension(relativePath, HandBrakeEncodeProfile.OutputExtension));
+                    Path.ChangeExtension(relativePath, HandBrakeEncodeProfile.OutputExtension)));
 
-                var status = File.Exists(encodedPath) ? MediaFileEncodeStatus.Encoded
+                var status = encodedFile.Exists ? MediaFileEncodeStatus.Encoded
                     : queue.IsActive(relativePath) ? MediaFileEncodeStatus.Encoding
                     : MediaFileEncodeStatus.NotEncoded;
 
-                return new MediaFileDto(f.Name, relativePath, f.Length, f.Extension, status);
+                // Once encoded, the size that matters is the streamable file's.
+                var sizeBytes = encodedFile.Exists ? encodedFile.Length : f.Length;
+
+                return new MediaFileDto(f.Name, relativePath, sizeBytes, f.Extension, status);
             })
             .Where(f => !encodedOnly || f.EncodeStatus == MediaFileEncodeStatus.Encoded)
             .ToList();

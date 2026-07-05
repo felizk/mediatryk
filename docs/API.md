@@ -38,6 +38,8 @@ Optional query parameter `encodedOnly` (bool, default `false`): with `?encodedOn
 - `"Encoding"` — a queued or running encode job exists for this file.
 - `"NotEncoded"` — neither of the above.
 
+`sizeBytes` is the source file's size, except when `encodeStatus` is `"Encoded"`: then it's the size of the encoded `.mp4` in the media library (the file you'd actually stream).
+
 Only `.mkv` and `.mp4` files are listed; other files are hidden.
 
 ### `GET /api/media/stream/{path}`

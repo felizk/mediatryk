@@ -10,8 +10,16 @@ RUN dotnet publish MediaTryk/MediaTryk.csproj -c Release -o /app/publish --no-re
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 
+# Intel QSV/VAAPI hardware encoding: the Ubuntu handbrake-cli build has QSV
+# enabled (via libvpl2); it additionally needs the Intel media driver and the
+# VPL GPU runtimes (libmfx-gen1.2 for Tiger Lake and newer, libmfx1 for older
+# generations). The GPU must be passed into the container at runtime:
+#   docker run --device /dev/dri --group-add $(stat -c %g /dev/dri/renderD128) ...
+# Without /dev/dri the app automatically falls back to software x265.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends handbrake-cli mkvtoolnix \
+    && apt-get install -y --no-install-recommends \
+        handbrake-cli mkvtoolnix \
+        intel-media-va-driver-non-free libmfx-gen1.2 libmfx1 vainfo \
     && rm -rf /var/lib/apt/lists/* \
     && id -u 99 >/dev/null 2>&1 || useradd -u 99 -g 100 -M -s /usr/sbin/nologin appuser
 

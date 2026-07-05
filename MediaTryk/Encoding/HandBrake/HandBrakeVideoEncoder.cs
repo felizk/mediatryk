@@ -1,14 +1,18 @@
 using System.Diagnostics;
 using MediaTryk.Encoding.Mkv;
+using Microsoft.Extensions.Options;
 
 namespace MediaTryk.Encoding.HandBrake;
 
 /// <summary>
 /// Identifies the source MKV's tracks via mkvmerge, selects the default ones,
-/// and runs HandBrakeCLI with the fixed HandBrakeEncodeProfile settings.
+/// and runs HandBrakeCLI with the fixed HandBrakeEncodeProfile settings, using
+/// the Intel QSV encoder when it's enabled and available.
 /// </summary>
-public class HandBrakeVideoEncoder(
+public partial class HandBrakeVideoEncoder(
     MkvMergeIdentifier mkvMergeIdentifier,
+    HandBrakeCapabilities capabilities,
+    IOptions<HandBrakeOptions> options,
     ILogger<HandBrakeVideoEncoder> logger) : IVideoEncoder
 {
     public async Task EncodeAsync(
@@ -19,7 +23,17 @@ public class HandBrakeVideoEncoder(
     {
         var tracks = await mkvMergeIdentifier.IdentifyTracksAsync(sourceFullPath, cancellationToken);
         var selection = TrackSelector.Select(tracks);
-        var args = HandBrakeArgumentBuilder.Build(sourceFullPath, destinationFullPath, selection);
+
+        var useHardwareEncoder = options.Value.EnableHardwareEncoding
+            && await capabilities.IsQsvAvailableAsync();
+        var args = HandBrakeArgumentBuilder.Build(
+            sourceFullPath, destinationFullPath, selection, useHardwareEncoder);
+
+        LogEncoding(
+            sourceFullPath,
+            useHardwareEncoder
+                ? HandBrakeEncodeProfile.HardwareVideoEncoder
+                : HandBrakeEncodeProfile.VideoEncoder);
 
         var startInfo = new ProcessStartInfo
         {
@@ -63,6 +77,9 @@ public class HandBrakeVideoEncoder(
             throw new InvalidOperationException($"HandBrakeCLI exited with code {process.ExitCode}.");
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Encoding {SourcePath} with {Encoder}.")]
+    private partial void LogEncoding(string sourcePath, string encoder);
 
     private static async Task ReadProgressAsync(
         Process process,

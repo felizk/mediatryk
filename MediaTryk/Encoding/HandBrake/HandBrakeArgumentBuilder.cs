@@ -13,7 +13,8 @@ public static class HandBrakeArgumentBuilder
     public static IReadOnlyList<string> Build(
         string sourceFullPath,
         string destinationFullPath,
-        HandBrakeTrackSelection selection)
+        HandBrakeTrackSelection selection,
+        bool useHardwareEncoder)
     {
         var args = new List<string>
         {
@@ -23,8 +24,12 @@ public static class HandBrakeArgumentBuilder
             "-f", HandBrakeEncodeProfile.ContainerFormat,
             "-O",
 
-            "-e", HandBrakeEncodeProfile.VideoEncoder,
-            "--encoder-preset", HandBrakeEncodeProfile.EncoderPreset,
+            "-e", useHardwareEncoder
+                ? HandBrakeEncodeProfile.HardwareVideoEncoder
+                : HandBrakeEncodeProfile.VideoEncoder,
+            "--encoder-preset", useHardwareEncoder
+                ? HandBrakeEncodeProfile.HardwareEncoderPreset
+                : HandBrakeEncodeProfile.EncoderPreset,
             "-q", HandBrakeEncodeProfile.VideoQuality.ToString(CultureInfo.InvariantCulture),
             "-X", HandBrakeEncodeProfile.MaxWidth.ToString(CultureInfo.InvariantCulture),
             "-Y", HandBrakeEncodeProfile.MaxHeight.ToString(CultureInfo.InvariantCulture),

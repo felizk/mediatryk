@@ -17,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `Media/MediaPathResolver.cs` — resolves relative paths against both roots and rejects traversal; all user-supplied paths must go through it.
 - `Encoding/EncodeQueue.cs` — in-memory job store + channel feeding `EncodeQueueHostedService`, which encodes one job at a time via HandBrakeCLI (`--json` stdout is parsed for progress). Job updates fan out to WebSocket subscribers of `/api/encode/queue/ws`.
 - `lock (job)` guards the Queued → Running/Canceled transition, shared between the worker's dequeue and `EncodeQueue.Cancel`. Keep new state transitions inside it.
+- `Encoding/HandBrake/HandBrakeCapabilities.cs` probes `HandBrakeCLI --help` once for Intel QSV; if available (and `HandBrake:EnableHardwareEncoding` isn't set to false), jobs encode with `qsv_h265_10bit`, otherwise software `x265_10bit`. In Docker, QSV needs `--device /dev/dri --group-add <gid of /dev/dri/renderD128>` at run time; without it the probe fails and encoding silently falls back to software.
 - Encodes write to `<dest>.encoding`, then move into place — an in-progress file is never visible through the media API.
 
 ## Constraints

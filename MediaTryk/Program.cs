@@ -31,7 +31,8 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy => policy
         .AllowAnyOrigin()
         .AllowAnyMethod()
-        .AllowAnyHeader());
+        .AllowAnyHeader()
+        .WithExposedHeaders("Content-Range", "Accept-Ranges", "Content-Length"));
 });
 
 var app = builder.Build();

@@ -99,6 +99,10 @@ Requeueing several jobs puts each new one at the very front, so the most recentl
 
 Removes all finished jobs (`Completed`, `Canceled`, and `Failed`) from the list. Returns `200` with `{ "removed": <count> }`. No WebSocket message is sent for removals — see below.
 
+### `GET /healthz`
+
+Liveness probe used by the Docker `HEALTHCHECK`. Returns `200` with the plain-text body `Healthy` while the server is up. Clients don't need it.
+
 ## WebSocket: `ws://<host>/api/encode/queue/ws`
 
 Live job updates. Protocol:

@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>mediatryk</Name>
+  <Repository>ghcr.io/felizk/mediatryk:latest</Repository>
+  <Registry>https://github.com/felizk/mediatryk/pkgs/container/mediatryk</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Shell>sh</Shell>
+  <Support>https://github.com/felizk/mediatryk/issues</Support>
+  <Project>https://github.com/felizk/mediatryk</Project>
+  <Overview>Media server API: browses a source library of MKVs, encodes them to H.265 MP4 with HandBrake (Intel QSV when the GPU is passed in, software x265 otherwise) and streams the encoded files. API only; a separate client provides the UI.</Overview>
+  <Category>MediaServer:Video</Category>
+  <WebUI>http://[IP]:[PORT:8080]/api/media/browse</WebUI>
+  <ExtraParams></ExtraParams>
+  <PostArgs></PostArgs>
+  <Config Name="API" Target="8080" Default="8080" Mode="tcp" Description="HTTP port of the API and WebSocket (UAM may remap it)" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Media library" Target="/media" Default="/mnt/user/main/Media_Compressed" Mode="rw" Description="Where encoded MP4s are written and streamed from. Also holds the encode queue state in .mediatryk/queue.json" Type="Path" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Source library" Target="/source" Default="/mnt/user/main/Media/" Mode="ro" Description="Original MKVs to browse and encode (read-only)" Type="Path" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Intel GPU" Target="/dev/dri" Default="/dev/dri" Mode="" Description="Passes the Intel GPU in for QSV hardware encoding. Clear it on a host without /dev/dri; encoding then uses software x265" Type="Device" Display="always" Required="false" Mask="false">/dev/dri</Config>
+  <Config Name="Hardware encoding" Target="HandBrake__EnableHardwareEncoding" Default="true" Mode="" Description="Set to false to force software x265 even when QSV is available" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+</Container>

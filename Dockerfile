@@ -18,7 +18,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 # Without /dev/dri the app automatically falls back to software x265.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        handbrake-cli mkvtoolnix \
+        handbrake-cli mkvtoolnix curl \
         intel-media-va-driver-non-free libmfx-gen1.2 libmfx1 vainfo \
     && rm -rf /var/lib/apt/lists/* \
     && id -u 99 >/dev/null 2>&1 || useradd -u 99 -g 100 -M -s /usr/sbin/nologin appuser
@@ -33,6 +33,10 @@ RUN chown -R 99:100 /app
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
+
+# UAM rolls an update back if the new container turns unhealthy, so keep this.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s \
+    CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
 
 USER 99:100
 ENTRYPOINT ["/bin/sh", "-c", "umask 002 && exec dotnet MediaTryk.dll"]

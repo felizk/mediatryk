@@ -26,6 +26,8 @@ builder.Services.AddSingleton<MkvMergeIdentifier>();
 builder.Services.AddSingleton<IVideoEncoder, HandBrakeVideoEncoder>();
 builder.Services.AddHostedService<EncodeQueueHostedService>();
 
+builder.Services.AddHealthChecks();
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy => policy
@@ -39,6 +41,9 @@ var app = builder.Build();
 
 app.UseCors();
 app.UseWebSockets();
+
+// Polled by the Docker HEALTHCHECK.
+app.MapHealthChecks("/healthz");
 
 app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolver, EncodeQueue queue, bool encodedOnly = false) =>
     {

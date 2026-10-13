@@ -23,5 +23,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Constraints
 
 - A separate client repo consumes this API: routes, DTO shapes, and WebSocket message format are contracts. Call out any breaking change explicitly, and update `docs/API.md` (the contract doc the client repo relies on) whenever they change.
+- The app is installed and updated by Unraid App Manager. Follow `UAM.md` for anything touching `unraid/`, the Dockerfile or the publish workflow.
 - The Docker image runs as UID 99 / GID 100 with `umask 002` on purpose (Unraid host shares). Don't change the container user or the umask.
 - Commit directly to `main`; every push to `main` publishes the GHCR image via GitHub Actions.

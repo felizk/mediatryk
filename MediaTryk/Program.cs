@@ -11,6 +11,7 @@ builder.Services.AddOptions<MediaLibraryOptions>()
     .Validate(o => !string.IsNullOrWhiteSpace(o.RootPath), "MediaLibrary:RootPath must be set")
     .ValidateOnStart();
 builder.Services.AddSingleton<MediaPathResolver>();
+builder.Services.AddSingleton<EncodedMediaCatalog>();
 
 builder.Services.AddOptions<SourceLibraryOptions>()
     .Bind(builder.Configuration.GetSection(SourceLibraryOptions.SectionName))
@@ -80,51 +81,8 @@ app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolve
     })
     .WithName("BrowseMedia");
 
-app.MapGet("/api/media/encoded", (MediaPathResolver resolver) =>
-    {
-        var mediaRoot = resolver.MediaRootPath;
-        if (!Directory.Exists(mediaRoot))
-        {
-            return Results.Ok(Array.Empty<EncodedMediaDto>());
-        }
-
-        var results = new List<EncodedMediaDto>();
-        var pending = new Stack<string>();
-        pending.Push(mediaRoot);
-
-        while (pending.Count > 0)
-        {
-            var dir = new DirectoryInfo(pending.Pop());
-            foreach (var sub in dir.GetDirectories())
-            {
-                // Internal state (queue.json) lives under <media root>/.mediatryk.
-                if (dir.FullName == mediaRoot && sub.Name == ".mediatryk")
-                {
-                    continue;
-                }
-
-                pending.Push(sub.FullName);
-            }
-
-            foreach (var file in dir.GetFiles())
-            {
-                // In-progress encodes are "<name>.mp4.encoding", so the extension check skips them.
-                if (!string.Equals(file.Extension, HandBrakeEncodeProfile.OutputExtension, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var mediaPath = Path.GetRelativePath(mediaRoot, file.FullName);
-                results.Add(new EncodedMediaDto(
-                    FindSourcePath(resolver, mediaPath),
-                    mediaPath,
-                    file.Length,
-                    new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero)));
-            }
-        }
-
-        return Results.Ok(results.OrderBy(r => r.MediaPath, StringComparer.Ordinal).ToList());
-    })
+app.MapGet("/api/media/encoded", async (EncodedMediaCatalog catalog, bool refresh = false) =>
+        Results.Ok(await catalog.GetAllAsync(refresh)))
     .WithName("ListEncodedMedia");
 
 app.MapPost("/api/media/status", (MediaStatusRequestDto request, MediaPathResolver resolver, EncodeQueue queue) =>
@@ -255,19 +213,3 @@ app.Map("/api/encode/queue/ws", async (HttpContext context, EncodeQueue queue) =
     .WithName("WatchEncodeQueue");
 
 app.Run();
-
-// Local helpers (top-level statements): kept after app.Run() so endpoints above stay readable.
-static string? FindSourcePath(MediaPathResolver resolver, string mediaPath)
-{
-    // Same relative stem in the source tree; .mkv preferred over .mp4.
-    foreach (var ext in new[] { ".mkv", ".mp4" })
-    {
-        var candidate = Path.ChangeExtension(mediaPath, ext);
-        if (resolver.TryResolveSource(candidate, out var full) && File.Exists(full))
-        {
-            return candidate;
-        }
-    }
-
-    return null;
-}

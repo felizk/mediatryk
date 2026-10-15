@@ -46,6 +46,8 @@ Only `.mkv` and `.mp4` files are listed; other files are hidden.
 
 Every encoded file, built by walking the **media** tree for `.mp4` files (the `.mediatryk/` state folder and in-progress `*.encoding` files are skipped). Ordered by `mediaPath`.
 
+The list is cached in memory: built on the first request by walking the tree, and updated when an encode completes. MediaTryk is the only writer of the media tree, so the list is not rebuilt on its own; pass `?refresh=true` to force a rebuild (picks up files added or removed outside MediaTryk). Concurrent requests share one rebuild.
+
 ```json
 [
   {

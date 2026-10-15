@@ -5,17 +5,14 @@ namespace MediaTryk.Media;
 /// <summary>
 /// In-memory list of every encoded file in the media tree, served by
 /// GET /api/media/encoded. Walking the tree is slow on Unraid user shares, so
-/// the list is built once, patched when an encode completes, and rebuilt only
-/// when it is older than <see cref="MaxAge"/> or a client asks for a refresh
-/// (which picks up files added or removed outside MediaTryk).
+/// the list is built once and patched when an encode completes. MediaTryk is
+/// the only writer of the media tree, so it is rebuilt only when a client asks
+/// for a refresh (which picks up files changed outside MediaTryk).
 /// </summary>
 public class EncodedMediaCatalog(MediaPathResolver resolver, ILogger<EncodedMediaCatalog> logger)
 {
-    public static readonly TimeSpan MaxAge = TimeSpan.FromMinutes(15);
-
     private readonly object _gate = new();
     private Dictionary<string, EncodedMediaDto>? _entries;
-    private DateTimeOffset _builtAt;
     private Task<Dictionary<string, EncodedMediaDto>>? _scan;
 
     /// <summary>
@@ -27,7 +24,7 @@ public class EncodedMediaCatalog(MediaPathResolver resolver, ILogger<EncodedMedi
         Task<Dictionary<string, EncodedMediaDto>> scan;
         lock (_gate)
         {
-            if (!refresh && _entries is not null && DateTimeOffset.UtcNow - _builtAt < MaxAge)
+            if (!refresh && _entries is not null)
             {
                 return Sorted(_entries);
             }
@@ -42,7 +39,6 @@ public class EncodedMediaCatalog(MediaPathResolver resolver, ILogger<EncodedMedi
             if (ReferenceEquals(_scan, scan))
             {
                 _entries = built;
-                _builtAt = DateTimeOffset.UtcNow;
                 _scan = null;
             }
 

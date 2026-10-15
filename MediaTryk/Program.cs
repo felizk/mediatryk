@@ -2,6 +2,7 @@ using MediaTryk.Encoding;
 using MediaTryk.Encoding.HandBrake;
 using MediaTryk.Encoding.Mkv;
 using MediaTryk.Media;
+using Microsoft.Net.Http.Headers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +38,8 @@ builder.Services.AddCors(options =>
         .WithExposedHeaders("Content-Range", "Accept-Ranges", "Content-Length"));
 });
 
+const int MaxStatusPaths = 500;
+
 var app = builder.Build();
 
 app.UseCors();
@@ -66,16 +69,7 @@ app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolve
             .Select(f =>
             {
                 var relativePath = Path.GetRelativePath(resolver.SourceRootPath, f.FullName);
-                var encodedFile = new FileInfo(Path.Combine(
-                    resolver.MediaRootPath,
-                    Path.ChangeExtension(relativePath, HandBrakeEncodeProfile.OutputExtension)));
-
-                var status = encodedFile.Exists ? MediaFileEncodeStatus.Encoded
-                    : queue.IsActive(relativePath) ? MediaFileEncodeStatus.Encoding
-                    : MediaFileEncodeStatus.NotEncoded;
-
-                // Once encoded, the size that matters is the streamable file's.
-                var sizeBytes = encodedFile.Exists ? encodedFile.Length : f.Length;
+                var (status, sizeBytes) = MediaEncodeStatus.Evaluate(resolver, queue, relativePath, f.Length);
 
                 return new MediaFileDto(f.Name, relativePath, sizeBytes, f.Extension, status);
             })
@@ -85,6 +79,90 @@ app.MapGet("/api/media/browse/{*path}", (string? path, MediaPathResolver resolve
         return Results.Ok(new MediaBrowseResultDto(path ?? string.Empty, directories, files));
     })
     .WithName("BrowseMedia");
+
+app.MapGet("/api/media/encoded", (MediaPathResolver resolver) =>
+    {
+        var mediaRoot = resolver.MediaRootPath;
+        if (!Directory.Exists(mediaRoot))
+        {
+            return Results.Ok(Array.Empty<EncodedMediaDto>());
+        }
+
+        var results = new List<EncodedMediaDto>();
+        var pending = new Stack<string>();
+        pending.Push(mediaRoot);
+
+        while (pending.Count > 0)
+        {
+            var dir = new DirectoryInfo(pending.Pop());
+            foreach (var sub in dir.GetDirectories())
+            {
+                // Internal state (queue.json) lives under <media root>/.mediatryk.
+                if (dir.FullName == mediaRoot && sub.Name == ".mediatryk")
+                {
+                    continue;
+                }
+
+                pending.Push(sub.FullName);
+            }
+
+            foreach (var file in dir.GetFiles())
+            {
+                // In-progress encodes are "<name>.mp4.encoding", so the extension check skips them.
+                if (!string.Equals(file.Extension, HandBrakeEncodeProfile.OutputExtension, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var mediaPath = Path.GetRelativePath(mediaRoot, file.FullName);
+                results.Add(new EncodedMediaDto(
+                    FindSourcePath(resolver, mediaPath),
+                    mediaPath,
+                    file.Length,
+                    new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero)));
+            }
+        }
+
+        return Results.Ok(results.OrderBy(r => r.MediaPath, StringComparer.Ordinal).ToList());
+    })
+    .WithName("ListEncodedMedia");
+
+app.MapPost("/api/media/status", (MediaStatusRequestDto request, MediaPathResolver resolver, EncodeQueue queue) =>
+    {
+        if (request.Paths is null)
+        {
+            return Results.BadRequest();
+        }
+
+        if (request.Paths.Count > MaxStatusPaths)
+        {
+            return Results.BadRequest(new { error = $"At most {MaxStatusPaths} paths per request." });
+        }
+
+        var results = request.Paths.Select(path =>
+        {
+            var missing = new MediaStatusDto(path, false, MediaFileEncodeStatus.NotEncoded, null, null);
+            if (string.IsNullOrWhiteSpace(path) ||
+                !resolver.TryResolveSource(path, out var fullPath) ||
+                !MediaFile.IsAllowed(fullPath))
+            {
+                return missing;
+            }
+
+            var info = new FileInfo(fullPath);
+            if (!info.Exists)
+            {
+                return missing;
+            }
+
+            var relativePath = Path.GetRelativePath(resolver.SourceRootPath, fullPath);
+            var (status, sizeBytes) = MediaEncodeStatus.Evaluate(resolver, queue, relativePath, info.Length);
+            return new MediaStatusDto(path, true, status, sizeBytes, queue.GetActiveJobId(relativePath));
+        }).ToList();
+
+        return Results.Ok(results);
+    })
+    .WithName("MediaStatus");
 
 app.MapGet("/api/media/stream/{*path}", (string? path, MediaPathResolver resolver) =>
     {
@@ -96,12 +174,18 @@ app.MapGet("/api/media/stream/{*path}", (string? path, MediaPathResolver resolve
             return Results.NotFound();
         }
 
+        // Strong validator from size + mtime: a re-encoded file gets a new tag, so a
+        // stale If-Range falls back to a full 200 instead of splicing two files.
+        var info = new FileInfo(fullPath);
+        var lastWrite = info.LastWriteTimeUtc;
+        var etag = new EntityTagHeaderValue($"\"{info.Length:x}-{lastWrite.Ticks:x}\"");
         var contentType = MediaFile.GetContentType(fullPath);
-        return Results.File(fullPath, contentType, enableRangeProcessing: true);
+        return Results.File(fullPath, contentType, lastModified: new DateTimeOffset(lastWrite),
+            entityTag: etag, enableRangeProcessing: true);
     })
     .WithName("StreamMedia");
 
-app.MapPost("/api/encode/queue", (EncodeQueueRequestDto request, MediaPathResolver resolver, EncodeQueue queue) =>
+app.MapPost("/api/encode/queue", (EncodeQueueRequestDto request, MediaPathResolver resolver, EncodeQueue queue, HttpContext context) =>
     {
         if (string.IsNullOrWhiteSpace(request.Path) ||
             !resolver.TryResolveSource(request.Path, out var fullPath) ||
@@ -112,8 +196,17 @@ app.MapPost("/api/encode/queue", (EncodeQueueRequestDto request, MediaPathResolv
         }
 
         // Normalized so it matches the relative paths reported by browse.
-        var job = queue.Enqueue(Path.GetRelativePath(resolver.SourceRootPath, fullPath));
-        return Results.Created($"/api/encode/queue/{job.Id}", job.ToDto());
+        // An already-active job for the same path is returned as-is (200) instead of
+        // creating a duplicate; the check and the enqueue are atomic.
+        var (job, created) = queue.EnqueueOrGetActive(Path.GetRelativePath(resolver.SourceRootPath, fullPath));
+        var location = $"/api/encode/queue/{job.Id}";
+        if (created)
+        {
+            return Results.Created(location, job.ToDto());
+        }
+
+        context.Response.Headers.Location = location;
+        return Results.Ok(job.ToDto());
     })
     .WithName("QueueEncode");
 
@@ -162,3 +255,19 @@ app.Map("/api/encode/queue/ws", async (HttpContext context, EncodeQueue queue) =
     .WithName("WatchEncodeQueue");
 
 app.Run();
+
+// Local helpers (top-level statements): kept after app.Run() so endpoints above stay readable.
+static string? FindSourcePath(MediaPathResolver resolver, string mediaPath)
+{
+    // Same relative stem in the source tree; .mkv preferred over .mp4.
+    foreach (var ext in new[] { ".mkv", ".mp4" })
+    {
+        var candidate = Path.ChangeExtension(mediaPath, ext);
+        if (resolver.TryResolveSource(candidate, out var full) && File.Exists(full))
+        {
+            return candidate;
+        }
+    }
+
+    return null;
+}

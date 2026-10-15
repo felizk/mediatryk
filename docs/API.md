@@ -42,13 +42,53 @@ Optional query parameter `encodedOnly` (bool, default `false`): with `?encodedOn
 
 Only `.mkv` and `.mp4` files are listed; other files are hidden.
 
+### `GET /api/media/encoded`
+
+Every encoded file, built by walking the **media** tree for `.mp4` files (the `.mediatryk/` state folder and in-progress `*.encoding` files are skipped). Ordered by `mediaPath`.
+
+```json
+[
+  {
+    "sourcePath": "Shows/X/ep1.mkv",
+    "mediaPath": "Shows/X/ep1.mp4",
+    "sizeBytes": 412345678,
+    "encodedAt": "2026-07-05T07:30:12.5+00:00"
+  }
+]
+```
+
+- `sourcePath`: the source file with the same relative stem — `.mkv` preferred, else `.mp4` — or `null` if no such source exists (e.g. the source was deleted).
+- `mediaPath`: the path to pass to `/api/media/stream/`.
+- `encodedAt`: the file's last write time, UTC.
+
+### `POST /api/media/status`
+
+Batch status for known source paths. Body: `{ "paths": ["<source-relative file path>", ...] }`, at most 500 paths (more → `400`).
+
+Returns `200` with one entry per requested path, in request order:
+
+```json
+[
+  { "path": "Shows/X/ep1.mkv", "exists": true, "encodeStatus": "Encoding", "sizeBytes": 4977113228, "jobId": "20ad184f-0556-4a13-bb16-d6af799c740e" },
+  { "path": "nope.mkv", "exists": false, "encodeStatus": "NotEncoded", "sizeBytes": null, "jobId": null }
+]
+```
+
+- `encodeStatus` and `sizeBytes` follow exactly the browse rules (`sizeBytes` is the encoded `.mp4`'s size when `Encoded`, else the source's).
+- `jobId` is the id of the active (`Queued`/`Running`) job for that source path, otherwise `null`.
+- A path that escapes the root, isn't an `.mkv`/`.mp4`, or doesn't exist gives `exists: false`, `encodeStatus: "NotEncoded"`, `sizeBytes: null`, `jobId: null` — it never fails the whole request.
+
 ### `GET /api/media/stream/{path}`
 
 Streams a file from the **media** tree with HTTP range support — usable directly as a `<video src>`. `path` is the media-relative file path: take a browse result's `path` and replace the extension with `.mp4` (e.g. browse shows `Shows/X/ep1.mkv` → stream `Shows/X/ep1.mp4`). `404` if missing or not `.mkv`/`.mp4`.
 
+The response carries a strong `ETag` (derived from file size and last-write time) and `Last-Modified`. A resumed download should send `If-Range: <etag>` with its `Range` header: if the file was re-encoded in between, the tag no longer matches and the server answers with a full `200` instead of a `206` for the new file.
+
 ### `POST /api/encode/queue`
 
-Body: `{ "path": "<source-relative file path>" }`. Queues an encode; returns `201` with the job DTO and a `Location: /api/encode/queue/{id}` header. `404` if the path doesn't resolve to an allowed file. **No dedup** — posting the same path twice creates two jobs; check `encodeStatus`/the queue first if that matters.
+Body: `{ "path": "<source-relative file path>" }`. Queues an encode; returns `201` with the job DTO and a `Location: /api/encode/queue/{id}` header. `404` if the path doesn't resolve to an allowed file.
+
+**Dedup (behaviour change, backward compatible):** if a `Queued` or `Running` job already exists for the same (normalized) source path, no new job is created; the response is `200` with that job's DTO and the same `Location` header. Only a genuinely new job returns `201`. Check-and-enqueue is atomic, so concurrent posts never produce two active jobs for one path. Finished (`Completed`/`Failed`/`Canceled`) jobs don't count, so posting again after one creates a new job. Clients that treat any 2xx body as "the job" need no change.
 
 ### `GET /api/encode/queue` / `GET /api/encode/queue/{id}`
 
@@ -121,7 +161,8 @@ Client rules:
 ## Typical flows
 
 - **Library UI**: `GET /api/media/browse/{dir}` per directory; show `encodeStatus` per file; offer "play" (stream URL with `.mp4` extension) when `Encoded`, "encode" when `NotEncoded`.
-- **"Already encoded" view**: same browse calls with `?encodedOnly=true` — everything returned is streamable (or a folder on the way to something encoded).
+- **"Already encoded" view**: same browse calls with `?encodedOnly=true` — everything returned is streamable (or a folder on the way to something encoded). For a flat list of everything encoded, use `GET /api/media/encoded`.
+- **Status of known files**: `POST /api/media/status` with the source paths you already have, instead of browsing directories.
 - **Encode with live progress**: open the WebSocket first, then `POST /api/encode/queue`; correlate by the `id` from the 201 response and drive a progress bar from `progress`/`etaSeconds`.
 - **After a job completes**: re-browse the affected directory (or flip that file locally to `Encoded`) so play buttons appear.
 - **Retry a failed encode**: `POST /api/encode/queue/{id}/requeue` on the `Failed` job — same id, jumps to the front of the queue. Offer it for `Canceled` jobs too.

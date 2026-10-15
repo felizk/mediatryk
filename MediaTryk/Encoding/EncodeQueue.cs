@@ -65,6 +65,31 @@ public class EncodeQueue
         }
     }
 
+    private readonly object _enqueueLock = new();
+
+    /// <summary>
+    /// Returns the active (Queued/Running) job for the path if there is one,
+    /// otherwise creates it. The check and the insert are atomic with respect
+    /// to other callers of this method.
+    /// </summary>
+    public (EncodeJob Job, bool Created) EnqueueOrGetActive(string sourcePath)
+    {
+        lock (_enqueueLock)
+        {
+            var existing = FindActive(sourcePath);
+            return existing is not null ? (existing, false) : (Enqueue(sourcePath), true);
+        }
+    }
+
+    public Guid? GetActiveJobId(string sourcePath) => FindActive(sourcePath)?.Id;
+
+    private EncodeJob? FindActive(string sourcePath) =>
+        _jobs.Values
+            .Where(j => j.Status is EncodeJobStatus.Queued or EncodeJobStatus.Running &&
+                        string.Equals(j.SourcePath, sourcePath, StringComparison.Ordinal))
+            .OrderBy(j => j.Order)
+            .FirstOrDefault();
+
     public EncodeJob Enqueue(string sourcePath)
     {
         var job = new EncodeJob

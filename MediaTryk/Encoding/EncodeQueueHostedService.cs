@@ -10,6 +10,7 @@ namespace MediaTryk.Encoding;
 public class EncodeQueueHostedService(
     EncodeQueue queue,
     MediaPathResolver resolver,
+    EncodedMediaCatalog encodedCatalog,
     IVideoEncoder encoder,
     ILogger<EncodeQueueHostedService> logger) : BackgroundService
 {
@@ -72,6 +73,7 @@ public class EncodeQueueHostedService(
                 }, jobCancellation.Token);
 
                 File.Move(inProgressFullPath, destinationFullPath, overwrite: true);
+                encodedCatalog.Upsert(job.DestinationPath);
 
                 job.Status = EncodeJobStatus.Completed;
                 job.Progress = 1;

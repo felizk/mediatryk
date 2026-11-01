@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>mediatryk</Name>
-  <Repository>ghcr.io/felizk/mediatryk:latest</Repository>
-  <Registry>https://github.com/felizk/mediatryk/pkgs/container/mediatryk</Registry>
+  <Repository>forgejo.felizk.net/felizk/mediatryk:latest</Repository>
+  <Registry>https://forgejo.felizk.net/felizk/-/packages/container/mediatryk</Registry>
   <Network>bridge</Network>
   <Privileged>false</Privileged>
   <Shell>sh</Shell>
-  <Support>https://github.com/felizk/mediatryk/issues</Support>
-  <Project>https://github.com/felizk/mediatryk</Project>
+  <Support>https://forgejo.felizk.net/felizk/mediatryk/issues</Support>
+  <Project>https://forgejo.felizk.net/felizk/mediatryk</Project>
   <Overview>Media server API: browses a source library of MKVs, encodes them to H.265 MP4 with HandBrake (Intel QSV when the GPU is passed in, software x265 otherwise) and streams the encoded files. API only; a separate client provides the UI.</Overview>
   <Category>MediaServer:Video</Category>
   <WebUI>http://[IP]:[PORT:8080]/api/media/browse</WebUI>

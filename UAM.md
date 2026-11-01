@@ -10,7 +10,7 @@ https://github.com/felizk/unraidappmanager/blob/main/docs/app-repo-guide.md
 - Remove the `HEALTHCHECK` from the Dockerfile. Updates rely on it for automatic rollback.
 
 ## Always
-- Keep `<Repository>` on a moving tag (`ghcr.io/<owner>/<repo>:latest`).
+- Keep `<Repository>` on a moving tag (`forgejo.felizk.net/<owner>/<repo>:latest`).
 - Declare every listening port as a `Port` config, and point `<WebUI>` at the HTTP port
   with `[PORT:N]`.
 - Store persistent data only under declared `Path` configs
